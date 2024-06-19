@@ -75,6 +75,8 @@
 (require 'thingatpt)
 (require 'dash)
 (require 'xml)
+(require 'zlib)
+
 
 (defgroup plantuml-mode nil
   "Major mode for editing plantuml file."
@@ -373,21 +375,31 @@ Note that output type `txt' is promoted to `utxt' for better rendering."
   (let ((java-args (if (<= 8 (plantuml-jar-java-version))
                        (remove "--illegal-access=deny" plantuml-java-args)
                      plantuml-java-args)))
-    (apply #'start-process
-           "PLANTUML" buf plantuml-java-command
-           `(,@java-args
-             ,(expand-file-name plantuml-jar-path)
-             ,(plantuml-jar-output-type-opt plantuml-output-type)
-             ,@plantuml-jar-args
-             "-p"))))
+    (make-process
+           :name "PLANTUML" 
+           :buffer buf 
+           :command `(,plantuml-java-command 
+                      ,@java-args 
+                      ,(expand-file-name plantuml-jar-path) 
+                      ,(plantuml-jar-output-type-opt plantuml-output-type) 
+                      ,@plantuml-jar-args 
+                      ,"-p")
+           :stderr (get-buffer-create "*PLANTUML Errors*")
+            ))
+           )
 
 (defun plantuml-executable-start-process (buf)
   "Run PlantUML as an Emacs process and puts the output into the given buffer (as BUF)."
-  (apply #'start-process
-         "PLANTUML" buf plantuml-executable-path
-         `(,@plantuml-executable-args
-           ,(plantuml-jar-output-type-opt plantuml-output-type)
-           "-p")))
+    (make-process
+           :name "PLANTUML" 
+           :buffer buf 
+           :command `(,plantuml-executable-path 
+                      ,@plantuml-executable-args 
+                      ,(plantuml-jar-output-type-opt plantuml-output-type) 
+                      ,"-p")   
+           :stderr (get-buffer-create "*PLANTUML Errors*")
+            )
+  )
 
 (defun plantuml-update-preview-buffer (prefix buf)
   "Show the preview in the preview buffer BUF.
@@ -426,8 +438,10 @@ Put the result into buffer BUF.  Window is selected according to PREFIX:
   "Encode the string STRING into a URL suitable for PlantUML server interactions."
   (let* ((coding-system (or buffer-file-coding-system
                             "utf8"))
-         (encoded-string (base64-encode-string (encode-coding-string string coding-system) t)))
-    (concat plantuml-server-url "/" plantuml-output-type "/-base64-" encoded-string)))
+;         (encoded-string (base64-encode-string (encode-coding-string string coding-system) t)))
+;    (concat plantuml-server-url "/" plantuml-output-type "/-base64-" encoded-string)))
+         (encoded-string (zlib-encode-string (encode-coding-string string coding-system) 'deflate)))
+    (concat plantuml-server-url "/" plantuml-output-type "/" encoded-string)))
 
 (defun plantuml-server-preview-string (prefix string buf)
   "Preview the diagram from STRING as rendered by the PlantUML server.
